@@ -1,0 +1,10 @@
+# virtual Enviroment
+alieninvension2/
+# python cache
+__pycache__/
+*.pyc
+#Editor
+.vscode/
+# Os files
+.DS_Store
+Thumbs.db

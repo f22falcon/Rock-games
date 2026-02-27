@@ -14,7 +14,7 @@ PLAYER_SPEED = 5
 PLAYER_ROTATION_SPEED = 3
 PLAYER_SHOOT_COOLDOWN = 0.2
 
-BULLET_SPEED = 12
+BULLET_SPEED = 10
 BULLET_SCALE = 0.8
 ENEMY_SPAWN_RATE=1
 ENEMY_SPEED_MIN=1
@@ -24,6 +24,7 @@ ENEMY_SCALE=0.3
 
 class Enemy:
     def __init__(self):
+        
         side=random.choice(["top","right","bottam","left"])
         if side == "top":
             self.x=random.uniform(0,SCREEN_WIDTH)
@@ -44,7 +45,9 @@ class Enemy:
         self.speed= random.uniform(ENEMY_SPEED_MIN,ENEMY_SPEED_MAX)
         self.angle=0
         self.radius=150* ENEMY_SCALE
-        self.health=1
+        self.max_health = 10
+        self.health = 10
+        self.display_health = 10.0   
 
     def update(self,player_x,player_y):
         dx=player_x -self.x
@@ -53,6 +56,8 @@ class Enemy:
 
         self.x += math.cos((math.radians(self.angle)))*self.speed
         self.y += math.sin(math.radians(self.angle))*self.speed
+        # Smooth health bar animation
+        self.display_health += (self.health - self.display_health) * 0.15
 
 
 
@@ -69,22 +74,29 @@ class Enemy:
         )
 
     def draw_health_bar(self):
-        if self.health < self.max_health:
-            bar_width=50
-            bar_height=6
-            helath_percentage=self.helath/self.max_health
-            health_width=helath_percentage *bar_width
+     if self.health< self.max_health:
+       bar_width = 50
+       bar_height = 6
 
-            bar_x=self.x
-            bar_y=self.y +self.radius +20
+       health_ratio = max(0, self.display_health / self.max_health)
+       health_width = bar_width * health_ratio
 
-            arcade.draw_rectangle_filled(
-                 bar_x,bar_y,bar_width,bar_height,arcade.color.RED)
-            arcade.draw_rectangle_filled(bar_x-(bar_width-health_width)/2,bar_y,
-                                         health_width,bar_height,arcade.color.GREEN)
-            arcade.draw_rectangle_outline(
-                bar_x,bar_y,bar_width,bar_height,arcade.color.WHITE,1)
-            
+       bar_x = self.x - bar_width / 2
+       bar_y = self.y + self.radius + 20
+
+       # Red background
+       arcade.draw_lbwh_rectangle_filled(
+       bar_x, bar_y, bar_width, bar_height, arcade.color.RED
+        )
+
+       # Green foreground (smooth)
+       arcade.draw_lbwh_rectangle_filled(
+       bar_x, bar_y, health_width, bar_height, arcade.color.GREEN
+        )
+
+       arcade.draw_lbwh_rectangle_outline(
+         bar_x, bar_y, bar_width, bar_height, arcade.color.WHITE, 1
+       )
 
     def is_off_screen(self):
         return (self.x<-50 or self.x > SCREEN_WIDTH +50 or
@@ -104,6 +116,7 @@ class Bullet:
         #Move bullet  based on angle
         self.x += math.cos(math.radians(self.angle))*self.speed
         self.y += math.sin(math.radians(self.angle))*self.speed
+
     def draw(self):
         arcade.draw_circle_filled(self.x,self.y,self.radius,arcade.color.YELLOW)
 
@@ -123,6 +136,8 @@ class MyGame(arcade.Window):
 
         self.bullets =[]
         self.enemies =[]
+        self.can_shoot = True
+        self.auto_fire = False
         self.shoot_timer = 0.0
         self.enemy_spawn_timer=0 
         self.health=100
@@ -131,48 +146,80 @@ class MyGame(arcade.Window):
         # self.shoot_cooldown =0
 
         self.keys_pressed = set()
+        self.score_text = arcade.Text(
+              "Score: 0", 10, SCREEN_HEIGHT - 30,
+               arcade.color.WHITE, 20
+            )       
+
+        self.health_text = arcade.Text(
+            "Health: 100", 10, SCREEN_HEIGHT - 60,
+            arcade.color.WHITE, 20
+            )
+
+        self.game_over_text = arcade.Text(
+            "GAME OVER",
+            SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50,
+            arcade.color.RED, 48,
+         anchor_x="center"
+            )
+
+        self.final_score_text = arcade.Text(
+            "", SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50,
+              arcade.color.WHITE, 36,
+              anchor_x="center"
+            )
+
+    def restart_game(self):
+        self.player_x = SCREEN_WIDTH // 2
+        self.player_y = SCREEN_HEIGHT // 2
+        self.player_angle = 0
+
+        self.bullets.clear()
+        self.enemies.clear()
+
+        self.score = 0
+        self.health = 100
+        self.game_over = False
+
+        self.can_shoot = True
+        self.auto_fire = False
+        self.shoot_timer = 0
+        self.enemy_spawn_timer = 0
+
+        self.score_text.text = "Score: 0"
+        self.health_text.text = "Health: 100"
 
     def on_draw(self):
-        self.clear()
+       self.clear()
 
-        arcade.draw_triangle_filled(
-            self.player_x + math.cos(math.radians(self.player_angle)) * self.player_radius * 1.5,
-            self.player_y + math.sin(math.radians(self.player_angle)) * self.player_radius * 1.5,
-            self.player_x + math.cos(math.radians(self.player_angle + 150)) * self.player_radius,
-            self.player_y + math.sin(math.radians(self.player_angle + 150)) * self.player_radius,
-            self.player_x + math.cos(math.radians(self.player_angle - 150)) * self.player_radius,
-            self.player_y + math.sin(math.radians(self.player_angle - 150)) * self.player_radius,
-            arcade.color.WHITE
-        )
-        for bullet in self.bullets:
+       if not self.game_over:
+        # -------- NORMAL GAME DRAW --------
+          arcade.draw_triangle_filled(
+             self.player_x + math.cos(math.radians(self.player_angle)) * self.player_radius * 1.5,
+             self.player_y + math.sin(math.radians(self.player_angle)) * self.player_radius * 1.5,
+             self.player_x + math.cos(math.radians(self.player_angle + 150)) * self.player_radius,
+             self.player_y + math.sin(math.radians(self.player_angle + 150)) * self.player_radius,
+             self.player_x + math.cos(math.radians(self.player_angle - 150)) * self.player_radius,
+             self.player_y + math.sin(math.radians(self.player_angle - 150)) * self.player_radius,
+             arcade.color.WHITE
+            )
+
+          for bullet in self.bullets:
             bullet.draw()
 
-        for enemy  in self.enemies:
+          for enemy in self.enemies:
             enemy.draw()
+            enemy.draw_health_bar()
 
-        arcade.draw_text(
-        f"Score: {self.score}",
-        10, SCREEN_HEIGHT - 30,
-        arcade.color.WHITE, 20
-    )
+          self.score_text.draw()
+          self.health_text.draw()
 
-        arcade.draw_text(
-        f"Health: {self.health}",
-        10, SCREEN_HEIGHT - 60,
-        arcade.color.WHITE, 20
-    )
+       else:
+        # -------- GAME OVER SCREEN ONLY --------
+         self.game_over_text.draw()
+         self.final_score_text.draw()
+         self.restart_text.draw()
         
-        if self.game_over:
-            arcade.draw_rectangle_filled(SCREEN_WIDTH//2,SCREEN_HEIGHT//2,
-                                         SCREEN_WIDTH,SCREEN_HEIGHT,(0,0,0,200))
-            arcade.draw_text("GAME OVER",SCREEN_WIDTH//2,SCREEN_HEIGHT//2+50,
-                             arcade.color.RED,48,ancore_x='center')
-            arcade.draw_text(f"FINAL SCORE {self.score}",SCREEN_WIDTH//2,SCREEN_HEIGHT//2-50,
-                             arcade.color.WHITE,36,ancore_x='center')
-            arcade.draw_text("Press R to Restart",SCREEN_WIDTH//2,SCREEN_HEIGHT//2-120,
-                             arcade.color.YELLOW,24,ancore_x='center')
-            
-
     def on_update(self, delta_time):
         
         # self.shoot_cooldown -=delta_time
@@ -180,19 +227,25 @@ class MyGame(arcade.Window):
 
         self.enemy_spawn_timer -= delta_time
 
-        if arcade.key.SPACE in self.keys_pressed:
-           while self.shoot_timer >= PLAYER_SHOOT_COOLDOWN:
-            self.shoot()
-            self.shoot_timer -= PLAYER_SHOOT_COOLDOWN
+        
+        if not self.game_over:
+           self.score_text.text = f"Score: {self.score}"
+           self.health_text.text = f"Health: {self.health}"
+           self.final_score_text.text = f"FINAL SCORE {self.score}"
 
+        
         if self.enemy_spawn_timer <=0:
             self.enemies.append(Enemy())
             self.enemy_spawn_timer=ENEMY_SPAWN_RATE
 
+        if self.game_over:
+           return
 
-        if arcade.key.SPACE in self.keys_pressed:
-            self.shoot()
-
+        if self.auto_fire and arcade.key.SPACE in self.keys_pressed:
+           if self.shoot_timer >= PLAYER_SHOOT_COOLDOWN:
+             self.shoot()
+             self.shoot_timer = 0
+        
         if arcade.key.W in self.keys_pressed:
             self.player_y += PLAYER_SPEED
 
@@ -219,7 +272,7 @@ class MyGame(arcade.Window):
         for enemy in self.enemies[:]:
             enemy.update(self.player_x,self.player_y)
             distance = math.sqrt((enemy.x-self.player_x)**2+
-                                  (enemy.x-self.player_x)**2)
+                                  (enemy.y-self.player_y)**2)
             if distance < enemy.radius +self.player_radius:
                 self.health -=10
                 self.enemies.remove(enemy)
@@ -235,10 +288,12 @@ class MyGame(arcade.Window):
                distance =math.sqrt((bullet.x-enemy.x)**2
                                    +(bullet.y-enemy.y)**2)
                if distance < bullet.radius+enemy.radius:
-                   self.enemies.remove(enemy)
-                   if bullet in self.bullets:
-                       self.bullets.remove(bullet)
-                   self.score +=10
+                   enemy.health-=1
+                   self.bullets.remove(bullet)
+                   
+                   if enemy.health<=0:
+                      self.enemies.remove(enemy)
+                      self.score +=10
                    break
             
             
@@ -253,9 +308,25 @@ class MyGame(arcade.Window):
             
 
     def on_key_press(self, key, modifiers):
-        self.keys_pressed.add(key)
+          
+         if self.game_over and key == arcade.key.R:
+          self.restart_game()
+          return
+         
+         if key == arcade.key.SPACE and not self.game_over:
+            if self.can_shoot:
+               self.shoot()              # single shot
+               self.can_shoot = False    # block repeat
+               self.auto_fire = True     # allow hold fire
+
+        # record key
+         self.keys_pressed.add(key)
 
     def on_key_release(self, key, modifiers):
+        if key == arcade.key.SPACE:
+          self.can_shoot = True
+          self.auto_fire = False
+
         self.keys_pressed.discard(key)
 
     def on_mouse_motion(self, x, y, dx, dy):

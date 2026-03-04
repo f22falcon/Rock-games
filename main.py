@@ -21,11 +21,37 @@ ENEMY_SPEED_MIN=1
 ENEMY_SPEED_MAX=3
 ENEMY_SCALE=0.3
 
+ENEMY_TYPES=["normal","shooter"]
+ENEMY_SHOOT_COOLDOWN = 2.0
+ENEMY_BULLET_SPEED = 5
+ENEMY_BULLET_COLOR= arcade.color.RED
+
+class EnemyBullet:
+    def __init__ (self,x,y,angle):
+        self.x=x
+        self.y=y
+        self.angle=angle
+        self.speed = ENEMY_BULLET_SPEED
+        self.radius = 6
+        self.color = ENEMY_BULLET_COLOR
+
+    def update(self):
+        self.x += math.cos(math.radians(self.angle)) *self.speed
+        self.y += math.sin(math.radians(self.angle)) *self.speed
+        
+    def draw(self):
+        arcade.draw_circle_filled(self.x,self.y,self.radius,self.color)
+
+    def is_off_screen(self):
+        return (self.x <0 or self.x >SCREEN_WIDTH or
+                self.y <0 or self.y >SCREEN_HEIGHT)   
+
 
 class Enemy:
     def __init__(self):
         
         side=random.choice(["top","right","bottam","left"])
+        
         if side == "top":
             self.x=random.uniform(0,SCREEN_WIDTH)
             self.y=SCREEN_HEIGHT+20
@@ -42,14 +68,21 @@ class Enemy:
             self.x=-20
             self.y=random.uniform(0,SCREEN_HEIGHT)
         
+        self.enemy_type = random.choice(ENEMY_TYPES)
         self.speed= random.uniform(ENEMY_SPEED_MIN,ENEMY_SPEED_MAX)
         self.angle=0
         self.radius=150* ENEMY_SCALE
-        self.max_health = 10
-        self.health = 10
-        self.display_health = 10.0   
+        self.max_health = 5
+        self.health = 5
+        self.display_health = 5
+        self.shoot_cooldown=0
 
-    def update(self,player_x,player_y):
+
+    def take_damage(self):
+        self.health -=1
+        return self.health <=0 
+
+    def update(self,player_x,player_y,delta_time):
         dx=player_x -self.x
         dy=player_y-self.y
         self.angle=math.degrees(math.atan2(dy,dx))
@@ -59,9 +92,27 @@ class Enemy:
         # Smooth health bar animation
         self.display_health += (self.health - self.display_health) * 0.15
 
+        if  self.enemy_type == "shooter":
+            self.shoot_cooldown -= delta_time
+
+    def shoot(self):
+        if self.enemy_type == "shooter" and self.shoot_cooldown <=0:
+            bullet_x=self.x+\
+               math.cos(math.radians(self.angle))*self.radius
+            bullet_y=self.y+\
+               math.cos(math.radians(self.angle))*self.radius
+            self.shoot_cooldown = ENEMY_SHOOT_COOLDOWN
+            return EnemyBullet(bullet_x,bullet_y,self.angle)
+        return None
 
 
     def draw(self):
+        if self.enemy_type =="shooter":
+            color =arcade.color.RED
+
+        else:
+            color =arcade.color.BLUE
+
         arcade.draw_triangle_filled(
             self.x +math.cos(math.radians(self.angle))*self.radius*2,
             self.y +math.sin(math.radians(self.angle))*self.radius*2,
@@ -69,7 +120,7 @@ class Enemy:
             self.y +math.sin(math.radians(self.angle + 140))*self.radius,
             self.x +math.cos(math.radians(self.angle - 140))*self.radius,
             self.y +math.sin(math.radians(self.angle - 140))*self.radius,
-            arcade.color.BLUE
+            color
 
         )
 
@@ -280,7 +331,7 @@ class MyGame(arcade.Window):
                self.bullets.remove(bullet)
         
         for enemy in self.enemies[:]:
-            enemy.update(self.player_x,self.player_y)
+            enemy.update(self.player_x,self.player_y,delta_time)
             distance = math.sqrt((enemy.x-self.player_x)**2+
                                   (enemy.y-self.player_y)**2)
             if distance < enemy.radius +self.player_radius:

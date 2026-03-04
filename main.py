@@ -168,6 +168,14 @@ class MyGame(arcade.Window):
               arcade.color.WHITE, 36,
               anchor_x="center"
             )
+        self.restart_text = arcade.Text(
+            "Press R to Restart",
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT // 2 - 120,
+            arcade.color.YELLOW,
+            24,
+            anchor_x="center"
+            ) 
 
     def restart_game(self):
         self.player_x = SCREEN_WIDTH // 2
@@ -225,6 +233,9 @@ class MyGame(arcade.Window):
         # self.shoot_cooldown -=delta_time
         self.shoot_timer += delta_time
 
+        if self.game_over:
+           return
+
         self.enemy_spawn_timer -= delta_time
 
         
@@ -238,8 +249,7 @@ class MyGame(arcade.Window):
             self.enemies.append(Enemy())
             self.enemy_spawn_timer=ENEMY_SPAWN_RATE
 
-        if self.game_over:
-           return
+        
 
         if self.auto_fire and arcade.key.SPACE in self.keys_pressed:
            if self.shoot_timer >= PLAYER_SHOOT_COOLDOWN:
@@ -334,15 +344,15 @@ class MyGame(arcade.Window):
         dy = y - self.player_y
         self.player_angle = math.degrees(math.atan2(dy, dx))
 
-    def restart_game(self):
-        self.player_x=SCREEN_WIDTH //2
-        self.player_y=SCREEN_HEIGHT //2
-        self.player_angle=0
-        self.bullets.clear()
-        self.enemies.clear()
-        self.score=0
-        self.health=100
-        self.game_over=False
+    # def restart_game(self):
+    #     self.player_x=SCREEN_WIDTH //2
+    #     self.player_y=SCREEN_HEIGHT //2
+    #     self.player_angle=0
+    #     self.bullets.clear()
+    #     self.enemies.clear()
+    #     self.score=0
+    #     self.health=100
+    #     self.game_over=False
 
 
 

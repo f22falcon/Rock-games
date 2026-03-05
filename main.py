@@ -100,7 +100,7 @@ class Enemy:
             bullet_x=self.x+\
                math.cos(math.radians(self.angle))*self.radius
             bullet_y=self.y+\
-               math.cos(math.radians(self.angle))*self.radius
+               math.sin(math.radians(self.angle))*self.radius
             self.shoot_cooldown = ENEMY_SHOOT_COOLDOWN
             return EnemyBullet(bullet_x,bullet_y,self.angle)
         return None
@@ -187,6 +187,7 @@ class MyGame(arcade.Window):
 
         self.bullets =[]
         self.enemies =[]
+        self.enemy_bullets = []
         self.can_shoot = True
         self.auto_fire = False
         self.shoot_timer = 0.0
@@ -265,6 +266,9 @@ class MyGame(arcade.Window):
 
           for bullet in self.bullets:
             bullet.draw()
+        
+          for bullet in self.enemy_bullets:
+             bullet.draw()
 
           for enemy in self.enemies:
             enemy.draw()
@@ -332,6 +336,11 @@ class MyGame(arcade.Window):
         
         for enemy in self.enemies[:]:
             enemy.update(self.player_x,self.player_y,delta_time)
+            bullet = enemy.shoot()
+
+            if bullet:
+               self.enemy_bullets.append(bullet)
+
             distance = math.sqrt((enemy.x-self.player_x)**2+
                                   (enemy.y-self.player_y)**2)
             if distance < enemy.radius +self.player_radius:
@@ -341,7 +350,27 @@ class MyGame(arcade.Window):
                     self.game_over=True
                 elif enemy.is_off_screen():
                   self.enemies.remove(enemy)
- 
+
+        for bullet in self.enemy_bullets[:]:
+            bullet.update()
+            if bullet.is_off_screen():
+               self.enemy_bullets.remove(bullet)
+
+
+        for bullet in self.enemy_bullets[:]:
+          distance = math.sqrt(
+          (bullet.x - self.player_x)**2 +
+          (bullet.y - self.player_y)**2
+          )
+
+          if distance < bullet.radius + self.player_radius:
+             self.health -= 1
+             self.enemy_bullets.remove(bullet)
+
+          if self.health <= 0:
+            self.game_over = True
+        
+   
 
         for bullet in self.bullets[:]:
             

@@ -76,7 +76,58 @@ class Enemy:
         self.health = 5
         self.display_health = 5
         self.shoot_cooldown=0
+    
+class BossBullet:
+    def __init__(self,x,y,angle,is_big=False):
+        self.x=x
+        self.y=y
+        self.angle= angle 
+        self.is_big=is_big
+        self.speed=7
+        self.damage=999 if is_big else 30
 
+        if is_big:
+            self.radius=12
+            self.color=arcade.color.YELLOW
+        else:
+            self.radius =6
+            self.color = arcade.color.ORANGE_RED
+
+    def update (self):
+        self.x += math.cos(math.radians(self.angle)) *self.speed
+        self.y += math.sin(math.radians(self.angle)) *self.speed
+
+    def draw(self):
+         arcade.draw_circle_filled(self.x,self.y,self.radius,self.color)
+        
+    def is_off_screen(self):
+        return (self.x <0 or self.x >SCREEN_WIDTH or
+                self.y <0 or self.y >SCREEN_HEIGHT)   
+
+class Boss:
+    def __init__(self):
+        self.x = SCREEN_WIDTH // 2 + random.uniform(-200,200)
+        self.y = SCREEN_HEIGHT +100
+        
+        self.speed =2
+        self.angle=0
+        self.radius=150*ENEMY_SCALE*3
+        self.health =100
+        self.normal_shoot_cooldown=0
+        self.big_shoot_cooldown =0
+        self.damage_flash_timer=0
+        self.flashing= False
+
+        self.color=arcade.color.ORANGE
+
+    def take_damage(self):
+        self.health -=1
+        self.damage_flash_timer=0.3
+        self.flashing=True
+        return self <=0
+    
+
+    
 
     def take_damage(self):
         self.health -=1
@@ -423,17 +474,6 @@ class MyGame(arcade.Window):
         dx = x - self.player_x
         dy = y - self.player_y
         self.player_angle = math.degrees(math.atan2(dy, dx))
-
-    # def restart_game(self):
-    #     self.player_x=SCREEN_WIDTH //2
-    #     self.player_y=SCREEN_HEIGHT //2
-    #     self.player_angle=0
-    #     self.bullets.clear()
-    #     self.enemies.clear()
-    #     self.score=0
-    #     self.health=100
-    #     self.game_over=False
-
 
 
 def main():

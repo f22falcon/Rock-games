@@ -27,6 +27,11 @@ ENEMY_BULLET_SPEED = 5
 ENEMY_BULLET_COLOR= arcade.color.RED
 PARTICLE_COUNT = 40
 PARTICAL_FADE_RATE=8
+CELL_SIZE = 120
+MAX_ATTACKERS = 4
+SEPARATION_FORCE = 0.3
+PLAYER_FRICTION = 0.90
+MAX_PLAYER_SPEED = 15
 
 class PowerUp:
    def __init__(self,x,y,power_type):
@@ -278,6 +283,7 @@ class Boss:
         self.radius=150*ENEMY_SCALE*2
         self.health =100
         self.max_health=100
+        self.mass = 40
         self.normal_shoot_cooldown=0
         self.big_shoot_cooldown =0
         self.damage_flash_timer=0
@@ -347,8 +353,8 @@ class Boss:
         
     def draw_health_bar(self):
 
-        bar_width = 200
-        bar_height = 20
+        bar_width = 100
+        bar_height = 10
 
         health_ratio = self.health / self.max_health
         health_width = bar_width * health_ratio
@@ -379,6 +385,10 @@ class MyGame(arcade.Window):
         self.player_y = SCREEN_HEIGHT // 2
         self.player_angle = 0
         self.player_radius = 150 * PLAYER_SCALE
+
+        self.player_vx = 0
+        self.player_vy = 0
+        self.player_mass = 10
 
         self.bullets =[]
         self.enemies =[]
@@ -503,12 +513,22 @@ class MyGame(arcade.Window):
         # self.shoot_cooldown -=delta_time
         self.shoot_timer += delta_time
         self.collision_cooldown -= delta_time
+        self.player_x += self.player_vx
+        self.player_y += self.player_vy
 
         if self.game_over:
            return
-
+        
+        self.player_vx *= PLAYER_FRICTION
+        self.player_vy *= PLAYER_FRICTION
         self.enemy_spawn_timer -= delta_time
         self.boss_spawn_timer -= delta_time
+
+        speed = math.sqrt(self.player_vx**2 + self.player_vy**2)
+
+        if speed > MAX_PLAYER_SPEED:
+           self.player_vx = (self.player_vx / speed) * MAX_PLAYER_SPEED
+           self.player_vy = (self.player_vy / speed) * MAX_PLAYER_SPEED
 
         
         if not self.game_over:
@@ -539,7 +559,20 @@ class MyGame(arcade.Window):
 
            distance = math.sqrt(dx*dx + dy*dy)
 
-           if distance < self.player_radius + self.boss.radius:
+           nx = dx / distance
+           ny = dy / distance
+
+           rvx = self.player_vx
+           rvy = self.player_vy
+
+           vel_along_normal = rvx*nx + rvy*ny
+
+           if vel_along_normal < 0:
+
+            impulse = -(1.2) * vel_along_normal
+            impulse /= (1/self.player_mass + 1/self.boss.mass)
+            self.player_vx += impulse * nx / self.player_mass
+            self.player_vy += impulse * ny / self.player_mass
 
            # damage player
             self.health -= 30
@@ -604,23 +637,49 @@ class MyGame(arcade.Window):
             bullet.update()
             if bullet.is_off_screen():
                self.bullets.remove(bullet)
+
+        sorted_enemies = sorted(
+        self.enemies,
+        key=lambda e: (e.x - self.player_x)**2 + (e.y - self.player_y)**2
+        )
         
-        for enemy in self.enemies[:]:
-            enemy.update(self.player_x,self.player_y,delta_time)
-            bullet = enemy.shoot()
+        for i, enemy in enumerate(sorted_enemies):
 
-            if bullet:
-               self.enemy_bullets.append(bullet)
+          if i < MAX_ATTACKERS:
+               enemy.update(self.player_x, self.player_y, delta_time)
+          else:
+            # orbit player
+             dx = self.player_x - enemy.x
+             dy = self.player_y - enemy.y
 
-            distance = math.sqrt((enemy.x-self.player_x)**2+
-                                  (enemy.y-self.player_y)**2)
-            if distance < enemy.radius +self.player_radius:
-                self.health -=10
-                self.enemies.remove(enemy)
-                if self.health <=0:
-                    self.game_over=True
-                elif enemy.is_off_screen():
-                  self.enemies.remove(enemy)
+             dist = math.sqrt(dx*dx + dy*dy)
+
+             if dist > 0:
+               nx = dx / dist
+               ny = dy / dist
+               enemy.x += -ny * enemy.speed
+               enemy.y += nx * enemy.speed
+
+           # separation
+          for other in self.enemies:
+
+            if other is enemy:
+              continue
+
+            dx = enemy.x - other.x
+            dy = enemy.y - other.y
+
+            dist_sq = dx*dx + dy*dy
+
+            if dist_sq < 2000:
+             enemy.x += dx * SEPARATION_FORCE
+             enemy.y += dy * SEPARATION_FORCE
+
+          # shooting
+          bullet = enemy.shoot()
+
+          if bullet:
+            self.enemy_bullets.append(bullet)
 
         for bullet in self.enemy_bullets[:]:
             bullet.update()

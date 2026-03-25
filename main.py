@@ -29,7 +29,8 @@ PARTICLE_COUNT = 40
 PARTICAL_FADE_RATE=8
 CELL_SIZE = 120
 MAX_ATTACKERS = 4
-SEPARATION_FORCE = 0.3
+MAX_ENEMIES = 5 
+SEPARATION_FORCE = 0.05
 PLAYER_FRICTION = 0.90
 MAX_PLAYER_SPEED = 15
 
@@ -168,22 +169,34 @@ class Enemy:
         self.health = 5
         self.display_health = 5
         self.shoot_cooldown=0  
+        self.turn_speed=3
     
     def take_damage(self):
         self.health -=1
         return self.health <=0 
 
     def update(self,player_x,player_y,delta_time):
-        dx=player_x -self.x
-        dy=player_y-self.y
-        self.angle=math.degrees(math.atan2(dy,dx))
+       dx = player_x - self.x
+       dy = player_y - self.y
 
-        self.x += math.cos((math.radians(self.angle)))*self.speed
-        self.y += math.sin(math.radians(self.angle))*self.speed
-        # Smooth health bar animation
-        self.display_health += (self.health - self.display_health) * 0.15
+       target_angle = math.degrees(math.atan2(dy, dx))
 
-        if  self.enemy_type == "shooter":
+       # shortest angle difference
+       diff = (target_angle - self.angle + 180) % 360 - 180
+
+       # rotate gradually
+       if diff > 0:
+            self.angle += min(self.turn_speed, diff)
+       else:
+            self.angle += max(-self.turn_speed, diff)
+
+       # move in current facing direction
+       self.x += math.cos(math.radians(self.angle)) * self.speed
+       self.y += math.sin(math.radians(self.angle)) * self.speed
+       # Smooth health bar animation
+       self.display_health += (self.health - self.display_health) * 0.15
+
+       if  self.enemy_type == "shooter":
             self.shoot_cooldown -= delta_time
 
     def shoot(self):
@@ -315,21 +328,23 @@ class Boss:
 
     def shoot_normal(self):
         if self.normal_shoot_cooldown <=0:
+            self.normal_shoot_cooldown =1.5
             bullet_x=self.x +\
                math.cos(math.radians(self.angle))*self.radius
             bullet_y=self.y +\
                math.sin(math.radians(self.angle))*self.radius
-            self.normal_shoot_cooldown =1.5
+           
             return BossBullet(bullet_x,bullet_y,self.angle,is_big=False)
         return None
     
     def shoot_big(self):
-        if self.normal_shoot_cooldown <=0:
+        if self.big_shoot_cooldown <=0:
+            self.big_shoot_cooldown =8.0
             bullet_x=self.x +\
                math.cos(math.radians(self.angle))*self.radius
             bullet_y=self.y +\
                math.sin(math.radians(self.angle))*self.radius
-            self.normal_shoot_cooldown =8.0
+           
             return BossBullet(bullet_x,bullet_y,self.angle,is_big=True)
         return None
     
@@ -400,11 +415,14 @@ class MyGame(arcade.Window):
         self.auto_fire = False
         self.shoot_timer = 0.0
         self.enemy_spawn_timer=0 
-        self.boss_spawn_timer=5#random.uniform(20,60)
+        self.boss_spawn_timer=1#random.uniform(20,60)
         self.health=100
         self.score=0   
         self.game_over=False
         self.collision_cooldown = 0
+        self.boss_warning_timer = 0
+        self.boss_hit_cooldown = 0
+        self.boss_collision_cooldown = 0
         self.keys_pressed = set()
 
 
@@ -438,11 +456,36 @@ class MyGame(arcade.Window):
             24,
             anchor_x="center"
             ) 
+        self.boss_warning_text = arcade.Text(
+            "⚠ BOSS INCOMING ⚠",20,
+            # SCREEN_WIDTH // 2,
+            10,
+            arcade.color.RED,
+            15,
+            
+            )
     
     def create_explosion(self,x,y,count=PARTICLE_COUNT):
        for _ in range(count):
         self.particals.append(Particle(x,y))
+    
+    def build_spatial_grid(self):
 
+        grid = {}
+
+        for enemy in self.enemies:
+
+           cell_x = int(enemy.x // CELL_SIZE)
+           cell_y = int(enemy.y // CELL_SIZE)
+
+           key = (cell_x, cell_y)
+
+           if key not in grid:
+             grid[key] = []
+
+           grid[key].append(enemy)
+
+        return grid
 
     def restart_game(self):
         self.player_x = SCREEN_WIDTH // 2
@@ -451,6 +494,10 @@ class MyGame(arcade.Window):
 
         self.bullets.clear()
         self.enemies.clear()
+
+        self.boss = None
+        self.boss_bullets.clear()
+        self.boss_spawn_timer = 1#1random.uniform(20, 60)
 
         self.score = 0
         self.health = 100
@@ -496,6 +543,12 @@ class MyGame(arcade.Window):
              self.boss.draw()
              self.boss.draw_health_bar()
 
+          if self.boss_warning_timer > 0:
+             if self.boss_warning_timer > 0:
+               if int(self.boss_warning_timer * 5) % 2 == 0:
+                self.boss_warning_text.draw()
+    
+
           for bullet in self.boss_bullets:
             bullet.draw()
 
@@ -513,6 +566,9 @@ class MyGame(arcade.Window):
         # self.shoot_cooldown -=delta_time
         self.shoot_timer += delta_time
         self.collision_cooldown -= delta_time
+        self.boss_warning_timer -= delta_time
+        self.boss_hit_cooldown -= delta_time
+        self.boss_collision_cooldown -= delta_time
         self.player_x += self.player_vx
         self.player_y += self.player_vy
 
@@ -537,77 +593,70 @@ class MyGame(arcade.Window):
            self.final_score_text.text = f"FINAL SCORE {self.score}"
 
         
-        if self.enemy_spawn_timer <=0:
-            self.enemies.append(Enemy())
-            self.enemy_spawn_timer=ENEMY_SPAWN_RATE
-
+        if self.enemy_spawn_timer <= 0 and len(self.enemies) < MAX_ENEMIES:
+           self.enemies.append(Enemy())
+           self.enemy_spawn_timer += ENEMY_SPAWN_RATE   
 
         # spawn boss timer
         
 
         if self.boss_spawn_timer <= 0 and self.boss is None:
            self.boss = Boss()
-
+           self.boss_warning_timer = 1
+        
         if self.boss:
 
-           # boss movement
-           self.boss.update(self.player_x, self.player_y, delta_time)
+          # boss movement
+          self.boss.update(self.player_x, self.player_y, delta_time)
 
-           # -------- Boss collision with player --------
-           dx = self.player_x - self.boss.x
-           dy = self.player_y - self.boss.y
+          dx = self.player_x - self.boss.x
+          dy = self.player_y - self.boss.y
+          distance = math.sqrt(dx*dx + dy*dy)
 
-           distance = math.sqrt(dx*dx + dy*dy)
+          if distance < self.player_radius + self.boss.radius:
 
-           nx = dx / distance
-           ny = dy / distance
+              if self.boss_collision_cooldown <= 0:
 
-           rvx = self.player_vx
-           rvy = self.player_vy
+                  self.boss_collision_cooldown = 0.4
 
-           vel_along_normal = rvx*nx + rvy*ny
+                  if distance == 0:
+                    distance = 0.001
 
-           if vel_along_normal < 0:
+                  nx = dx / distance
+                  ny = dy / distance
 
-            impulse = -(1.2) * vel_along_normal
-            impulse /= (1/self.player_mass + 1/self.boss.mass)
-            self.player_vx += impulse * nx / self.player_mass
-            self.player_vy += impulse * ny / self.player_mass
+                  overlap = self.player_radius + self.boss.radius - distance
 
-           # damage player
-            self.health -= 30
+                 # ✅ strong separation (no sticking)
+                  self.player_x += nx * overlap
+                  self.player_y += ny * overlap
 
-          # normalize direction
-           if distance != 0:
-              nx = dx / distance
-              ny = dy / distance
-           else:
-              nx = 1
-              ny = 0
+                  self.boss.x -= nx * overlap * 0.5
+                  self.boss.y -= ny * overlap * 0.5
 
-           push_force = 40
+                # ✅ clean push (no physics mess)
+                  push_force = 18
+                  self.player_vx = nx * push_force
+                  self.player_vy = ny * push_force
 
-           # push player away
-           self.player_x += nx * push_force
-           self.player_y += ny * push_force
+                # ✅ single explosion
+                  self.create_explosion(self.player_x, self.player_y, 10)
 
-           # push boss opposite direction
-           self.boss.x -= nx * push_force
-           self.boss.y -= ny * push_force
+                # ✅ single damage
+                  self.health -= 0
 
-          # collision effect
-           self.create_explosion(self.player_x, self.player_y, 20)
- 
-           if self.health <= 0:
-             self.game_over = True
+                  if self.health <= 0:
+                      self.game_over = True
 
-            # -------- Boss shooting --------
-           bullet = self.boss.shoot_normal()
-           if bullet:
-             self.boss_bullets.append(bullet)
+    # optional damage (with cooldown!)
 
-           bullet = self.boss.shoot_big()
-           if bullet:
+          # -------- Boss shooting --------
+          bullet = self.boss.shoot_normal()
+          if bullet:
+            self.boss_bullets.append(bullet)
+
+          bullet = self.boss.shoot_big()
+          if bullet:
              self.boss_bullets.append(bullet)
 
         if self.auto_fire and arcade.key.SPACE in self.keys_pressed:
@@ -660,26 +709,42 @@ class MyGame(arcade.Window):
                enemy.x += -ny * enemy.speed
                enemy.y += nx * enemy.speed
 
-           # separation
-          for other in self.enemies:
+          grid = self.build_spatial_grid()
+ 
+          # add boss into grid
+          if self.boss:
+             cell_x = int(self.boss.x // CELL_SIZE)
+             cell_y = int(self.boss.y // CELL_SIZE)
 
-            if other is enemy:
-              continue
+             key = (cell_x, cell_y)
 
-            dx = enemy.x - other.x
-            dy = enemy.y - other.y
+             if key not in grid:
+               grid[key] = []
 
-            dist_sq = dx*dx + dy*dy
-
-            if dist_sq < 2000:
-             enemy.x += dx * SEPARATION_FORCE
-             enemy.y += dy * SEPARATION_FORCE
+             grid[key].append(self.boss)
+       
 
           # shooting
           bullet = enemy.shoot()
-
           if bullet:
             self.enemy_bullets.append(bullet)
+
+        # -------- ENEMY-PLAYER COLLISION --------
+        for enemy in self.enemies[:]:
+           dx = enemy.x - self.player_x
+           dy = enemy.y - self.player_y
+           distance = math.sqrt(dx*dx + dy*dy)
+
+           if distance < enemy.radius + self.player_radius:
+              if self.collision_cooldown <= 0:
+               self.health -= 10
+               self.collision_cooldown = 0.5
+
+               self.create_explosion(enemy.x, enemy.y, 10)
+               self.enemies.remove(enemy)
+
+           if self.health <= 0:
+                self.game_over = True
 
         for bullet in self.enemy_bullets[:]:
             bullet.update()
@@ -687,11 +752,10 @@ class MyGame(arcade.Window):
                self.enemy_bullets.remove(bullet)
 
         for bullet in self.boss_bullets[:]:
-            bullet.update()
-            if bullet.is_off_screen():
-                self.boss_bullets.remove(bullet)
+            bullet.update()   
 
-        for bullet in self.boss_bullets[:]:
+            if bullet.is_off_screen():
+               self.boss_bullets.remove(bullet)
 
             distance = math.sqrt(
             (bullet.x - self.player_x)**2 +
@@ -699,11 +763,16 @@ class MyGame(arcade.Window):
             )
 
             if distance < bullet.radius + self.player_radius:
-              self.health -= bullet.damage
+
+              if self.boss_hit_cooldown <= 0:
+                self.health -= bullet.damage
+                self.boss_hit_cooldown = 0.3   # 300ms immunity
+
               self.boss_bullets.remove(bullet)
 
             if self.health <= 0:
-               self.game_over = True
+              self.game_over = True
+
 
         for bullet in self.enemy_bullets[:]:
           distance = math.sqrt(
@@ -728,6 +797,8 @@ class MyGame(arcade.Window):
            for enemy in self.enemies[:]:
                distance =math.sqrt((bullet.x-enemy.x)**2
                                    +(bullet.y-enemy.y)**2)
+               
+               
                if distance < bullet.radius+enemy.radius:
                    self.create_explosion(bullet.x,bullet.y,4 )
                    enemy.health-=1
@@ -748,7 +819,7 @@ class MyGame(arcade.Window):
               if distance < bullet.radius + self.boss.radius:
                 self.create_explosion(bullet.x,bullet.y,10)
                 dead = self.boss.take_damage()
-                self.bullets.remove(bullet)
+                self.boss_bullets.remove(bullet)
 
                 if dead:
                  self.create_explosion(self.boss.x, self.boss.y,120)

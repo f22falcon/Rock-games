@@ -39,7 +39,7 @@ class PowerUp:
         self.x=x
         self.y=y
         self.type=power_type
-        self.radius =20
+        self.radius =15
         self.speed_y =-1
         
         if power_type =="rapid_fire":
@@ -76,7 +76,7 @@ class Particle:
         self.speed=random.uniform(2,6)
 
         self.life=random.uniform(0.5,1.2)
-        self.radius=random.uniform(2,4)
+        self.radius=random.uniform(1,3)
 
     def update(self,dt):
 
@@ -494,6 +494,7 @@ class MyGame(arcade.Window):
 
         self.bullets.clear()
         self.enemies.clear()
+        self.particals.clear()
 
         self.boss = None
         self.boss_bullets.clear()
@@ -643,13 +644,12 @@ class MyGame(arcade.Window):
                   self.create_explosion(self.player_x, self.player_y, 10)
 
                 # single damage
-                  self.health -= 0
+                  self.health -= 5
 
                   if self.health <= 0:
                       self.game_over = True
 
-    # optional damage (with cooldown!)
-
+    
           # -------- Boss shooting --------
           bullet = self.boss.shoot_normal()
           if bullet:
@@ -789,34 +789,43 @@ class MyGame(arcade.Window):
            if self.health <= 0:
                 self.game_over = True
 
-        for bullet in self.enemy_bullets[:]:
-            bullet.update()
-            if bullet.is_off_screen():
-               self.enemy_bullets.remove(bullet)
-
+        
         for bullet in self.boss_bullets[:]:
-            bullet.update()   
+          bullet.update()
 
-            if bullet.is_off_screen():
-               self.boss_bullets.remove(bullet)
-
-            distance = math.sqrt(
-            (bullet.x - self.player_x)**2 +
-            (bullet.y - self.player_y)**2
-            )
-
-            if distance < bullet.radius + self.player_radius:
-
-              if self.boss_hit_cooldown <= 0:
-                self.health -= bullet.damage
-                self.boss_hit_cooldown = 0.3  
+          if bullet.is_off_screen():
+            if bullet in self.boss_bullets:
               self.boss_bullets.remove(bullet)
+            continue
 
-            if self.health <= 0:
-              self.game_over = True
+          distance = math.sqrt(
+          (bullet.x - self.player_x)**2 +
+          (bullet.y - self.player_y)**2
+          )
+
+          if distance < bullet.radius + self.player_radius:
+
+           if self.boss_hit_cooldown <= 0:
+            self.health -= bullet.damage
+            self.boss_hit_cooldown = 0.3
+
+            self.create_explosion(self.player_x, self.player_y, 6)
+
+           if bullet in self.boss_bullets:
+            self.boss_bullets.remove(bullet)
+           continue
+
+        if self.health <= 0:
+           self.game_over = True
 
 
         for bullet in self.enemy_bullets[:]:
+          bullet.update()
+
+          if bullet.is_off_screen():
+               self.enemy_bullets.remove(bullet)
+               continue
+        
           distance = math.sqrt(
           (bullet.x - self.player_x)**2 +
           (bullet.y - self.player_y)**2
@@ -825,11 +834,15 @@ class MyGame(arcade.Window):
           if distance < bullet.radius + self.player_radius:
              self.health -= 1
              self.enemy_bullets.remove(bullet)
+             self.create_explosion(self.player_x, self.player_y, 4)
 
           if self.health <= 0:
             self.game_over = True
+
         
         for p in self.particals[:]:
+          if len(self.particals) > 200:
+            self.particals = self.particals[-200:]
           p.update(delta_time)
           if p.life <= 0:
            self.particals.remove(p)

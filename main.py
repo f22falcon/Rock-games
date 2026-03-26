@@ -415,7 +415,7 @@ class MyGame(arcade.Window):
         self.auto_fire = False
         self.shoot_timer = 0.0
         self.enemy_spawn_timer=0 
-        self.boss_spawn_timer=1#random.uniform(20,60)
+        self.boss_spawn_timer=random.uniform(20,60)
         self.health=100
         self.score=0   
         self.game_over=False
@@ -497,7 +497,7 @@ class MyGame(arcade.Window):
 
         self.boss = None
         self.boss_bullets.clear()
-        self.boss_spawn_timer = 1#1random.uniform(20, 60)
+        self.boss_spawn_timer =random.uniform(20, 60)
 
         self.score = 0
         self.health = 100
@@ -627,22 +627,22 @@ class MyGame(arcade.Window):
 
                   overlap = self.player_radius + self.boss.radius - distance
 
-                 # ✅ strong separation (no sticking)
+                 # strong separation (no sticking)
                   self.player_x += nx * overlap
                   self.player_y += ny * overlap
 
                   self.boss.x -= nx * overlap * 0.5
                   self.boss.y -= ny * overlap * 0.5
 
-                # ✅ clean push (no physics mess)
+                # clean push (no physics mess)
                   push_force = 18
                   self.player_vx = nx * push_force
                   self.player_vy = ny * push_force
 
-                # ✅ single explosion
+                # single explosion
                   self.create_explosion(self.player_x, self.player_y, 10)
 
-                # ✅ single damage
+                # single damage
                   self.health -= 0
 
                   if self.health <= 0:
@@ -709,25 +709,68 @@ class MyGame(arcade.Window):
                enemy.x += -ny * enemy.speed
                enemy.y += nx * enemy.speed
 
-          grid = self.build_spatial_grid()
+          #shooting
+          bullet=enemy.shoot()
+          if bullet:
+             self.enemy_bullets.append(bullet)
+
+        grid = self.build_spatial_grid()
  
-          # add boss into grid
-          if self.boss:
-             cell_x = int(self.boss.x // CELL_SIZE)
-             cell_y = int(self.boss.y // CELL_SIZE)
+        # add boss into grid
+        if self.boss:
+            cell_x = int(self.boss.x // CELL_SIZE)
+            cell_y = int(self.boss.y // CELL_SIZE)
 
-             key = (cell_x, cell_y)
+            key = (cell_x, cell_y)
 
-             if key not in grid:
+            if key not in grid:
                grid[key] = []
 
-             grid[key].append(self.boss)
-       
+            grid[key].append(self.boss)
+        
+        # -------------------------------
+        # SEPARATION (ENEMY + BOSS)
+        # -------------------------------
+        for enemy in self.enemies:
 
-          # shooting
-          bullet = enemy.shoot()
-          if bullet:
-            self.enemy_bullets.append(bullet)
+           cell_x = int(enemy.x // CELL_SIZE)
+           cell_y = int(enemy.y // CELL_SIZE)
+
+           for dx in [-1, 0, 1]:
+             for dy in [-1, 0, 1]:
+
+               neighbor_key = (cell_x + dx, cell_y + dy)
+
+               if neighbor_key not in grid:
+                   continue
+
+               for other in grid[neighbor_key]:
+
+                  if other is enemy:
+                    continue
+
+                  dx_ = enemy.x - other.x
+                  dy_ = enemy.y - other.y
+
+                  dist_sq = dx_*dx_ + dy_*dy_
+
+                  if dist_sq == 0:
+                    continue
+
+                  dist = math.sqrt(dist_sq)
+
+                  min_dist = enemy.radius + getattr(other, "radius", 30)
+
+                  if dist < min_dist:
+
+                    nx = dx_ / dist
+                    ny = dy_ / dist
+
+                    push = (min_dist - dist) * 0.5
+
+                    enemy.x += nx * push
+                    enemy.y += ny * push
+
 
         # -------- ENEMY-PLAYER COLLISION --------
         for enemy in self.enemies[:]:
@@ -766,8 +809,7 @@ class MyGame(arcade.Window):
 
               if self.boss_hit_cooldown <= 0:
                 self.health -= bullet.damage
-                self.boss_hit_cooldown = 0.3   # 300ms immunity
-
+                self.boss_hit_cooldown = 0.3  
               self.boss_bullets.remove(bullet)
 
             if self.health <= 0:
@@ -819,7 +861,7 @@ class MyGame(arcade.Window):
               if distance < bullet.radius + self.boss.radius:
                 self.create_explosion(bullet.x,bullet.y,10)
                 dead = self.boss.take_damage()
-                self.boss_bullets.remove(bullet)
+                self.bullets.remove(bullet)
 
                 if dead:
                  self.create_explosion(self.boss.x, self.boss.y,120)

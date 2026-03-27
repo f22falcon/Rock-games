@@ -12,7 +12,7 @@ SCREEN_TITLE = "Alien Invasion 2"
 PLAYER_SCALE = 0.18
 PLAYER_SPEED = 6
 PLAYER_ROTATION_SPEED = 6
-PLAYER_SHOOT_COOLDOWN = 0.2
+PLAYER_SHOOT_COOLDOWN = 0.3
 
 BULLET_SPEED = 10
 BULLET_SCALE = 0.6
@@ -29,7 +29,7 @@ PARTICLE_COUNT = 40
 PARTICAL_FADE_RATE=8
 CELL_SIZE = 120
 MAX_ATTACKERS = 4
-MAX_ENEMIES = 5 
+MAX_ENEMIES = 8
 SEPARATION_FORCE = 0.05
 PLAYER_FRICTION = 0.90
 MAX_PLAYER_SPEED = 15
@@ -39,13 +39,13 @@ class PowerUp:
         self.x=x
         self.y=y
         self.type=power_type
-        self.radius =15
+        self.radius =10
         self.speed_y =-1
         
         if power_type =="rapid_fire":
-           self.color=arcade.color.CYAN
-        elif power_type =="shield":
            self.color=arcade.color.BLUE
+        elif power_type =="shield":
+           self.color=arcade.color.CYAN
         else:
            self.color=arcade.color.GREEN
 
@@ -54,15 +54,15 @@ class PowerUp:
 
    def draw(self):
       arcade.draw.draw_circle_filled(self.x,self.y,self.radius,self.color)
-      if self.type == "rapaid_fire":
+      if self.type == "rapid_fire":
          arcade.draw_text("",self.x-6,self.y-
-                          6,arcade.color.WHITE,12)
+                          6,arcade.color.WHITE,5)
       elif self.type == "shield":
          arcade.draw_text("",self.x-6,self.y-
-                          6,arcade.color.WHITE,12)
+                          6,arcade.color.WHITE,5)
       else:
           arcade.draw_text("",self.x-6,self.y-
-                          6,arcade.color.WHITE,12)
+                          6,arcade.color.WHITE,5)
     
      
 class Particle:
@@ -296,7 +296,6 @@ class Boss:
         self.radius=150*ENEMY_SCALE*2
         self.health =100
         self.max_health=100
-        self.mass = 40
         self.normal_shoot_cooldown=0
         self.big_shoot_cooldown =0
         self.damage_flash_timer=0
@@ -393,7 +392,7 @@ class Boss:
 
 class MyGame(arcade.Window):
     def __init__(self):
-        super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+        super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE,resizable=False)
         arcade.set_background_color(arcade.color.BLACK)
 
         self.player_x = SCREEN_WIDTH // 2
@@ -403,13 +402,16 @@ class MyGame(arcade.Window):
 
         self.player_vx = 0
         self.player_vy = 0
-        self.player_mass = 10
-
+        
         self.bullets =[]
         self.enemies =[]
         self.enemy_bullets = []
         self.boss_bullets =[]
         self.particals =[]
+        self.powerups = []
+        self.rapid_fire_timer = 0
+        self.shield_active = False
+        self.shield_timer = 0
         self.boss =None
         self.can_shoot = True
         self.auto_fire = False
@@ -548,6 +550,18 @@ class MyGame(arcade.Window):
              if self.boss_warning_timer > 0:
                if int(self.boss_warning_timer * 5) % 2 == 0:
                 self.boss_warning_text.draw()
+
+          # -------------------------------
+                 # SHIELD VISUAL
+          # -------------------------------
+          if self.shield_active:
+              arcade.draw_circle_outline(
+              self.player_x,
+              self.player_y,
+              self.player_radius + 10,
+              arcade.color.CYAN,
+              1
+              )
     
 
           for bullet in self.boss_bullets:
@@ -555,6 +569,9 @@ class MyGame(arcade.Window):
 
           for p in self.particals:
             p.draw()
+
+          for p in self.powerups:
+               p.draw()
 
        else:
         # -------- GAME OVER SCREEN ONLY --------
@@ -644,10 +661,13 @@ class MyGame(arcade.Window):
                   self.create_explosion(self.player_x, self.player_y, 10)
 
                 # single damage
-                  self.health -= 5
+                  if not self.shield_active:
+                    self.health -= 5
+
 
                   if self.health <= 0:
                       self.game_over = True
+                  
 
     
           # -------- Boss shooting --------
@@ -660,10 +680,17 @@ class MyGame(arcade.Window):
              self.boss_bullets.append(bullet)
 
         if self.auto_fire and arcade.key.SPACE in self.keys_pressed:
-           if self.shoot_timer >= PLAYER_SHOOT_COOLDOWN:
-             self.shoot()
-             self.shoot_timer = 0
-        
+
+             cooldown = PLAYER_SHOOT_COOLDOWN
+
+             # 🔥 rapid fire override
+             if self.rapid_fire_timer > 0:
+                cooldown = 0.05   # faster shooting
+
+             if self.shoot_timer >= cooldown:
+                self.shoot()
+                self.shoot_timer = 0
+
         if arcade.key.W in self.keys_pressed:
             self.player_y += PLAYER_SPEED
 
@@ -675,6 +702,14 @@ class MyGame(arcade.Window):
 
         if arcade.key.D in self.keys_pressed:
             self.player_x += PLAYER_SPEED
+
+        if self.rapid_fire_timer > 0:
+          self.rapid_fire_timer -= delta_time   
+
+        if self.shield_timer > 0:
+           self.shield_timer -= delta_time
+        else:
+           self.shield_active = False
 
        
         # Keep player inside screen
@@ -728,9 +763,8 @@ class MyGame(arcade.Window):
 
             grid[key].append(self.boss)
         
-        # -------------------------------
-        # SEPARATION (ENEMY + BOSS)
-        # -------------------------------
+        # ____________________SEPARATION (ENEMY + BOSS)__________________________
+    
         for enemy in self.enemies:
 
            cell_x = int(enemy.x // CELL_SIZE)
@@ -770,9 +804,38 @@ class MyGame(arcade.Window):
 
                     enemy.x += nx * push
                     enemy.y += ny * push
+        
+
+        for p in self.powerups[:]:
+           p.update()
+
+           if p.y < 0:
+              self.powerups.remove(p)
+
+        
+        for p in self.powerups[:]:
+
+           dx = p.x - self.player_x
+           dy = p.y - self.player_y
+           distance = math.sqrt(dx*dx + dy*dy)
+
+           if distance < p.radius + self.player_radius:
+
+            if p.type == "rapid_fire":
+               self.rapid_fire_timer = 5.0   # 5 seconds
+
+            elif p.type == "shield":
+               self.shield_active = True
+               self.shield_timer = 5.0
+
+            elif p.type == "Health":
+               if self.health <100:
+                self.health+=(100-self.health)
+
+            self.powerups.remove(p)
 
 
-        # -------- ENEMY-PLAYER COLLISION --------
+        #______________________________ENEMY-PLAYER COLLISION__________________________________
         for enemy in self.enemies[:]:
            dx = enemy.x - self.player_x
            dy = enemy.y - self.player_y
@@ -780,7 +843,8 @@ class MyGame(arcade.Window):
 
            if distance < enemy.radius + self.player_radius:
               if self.collision_cooldown <= 0:
-               self.health -= 10
+               if not self.shield_active:
+                   self.health -= 2
                self.collision_cooldown = 0.5
 
                self.create_explosion(enemy.x, enemy.y, 10)
@@ -805,8 +869,9 @@ class MyGame(arcade.Window):
 
           if distance < bullet.radius + self.player_radius:
 
-           if self.boss_hit_cooldown <= 0:
-            self.health -= bullet.damage
+           if self.boss_hit_cooldown <= 0 :
+            if not self.shield_active:
+              self.health -= bullet.damage
             self.boss_hit_cooldown = 0.3
 
             self.create_explosion(self.player_x, self.player_y, 6)
@@ -832,7 +897,8 @@ class MyGame(arcade.Window):
           )
 
           if distance < bullet.radius + self.player_radius:
-             self.health -= 1
+             if not self.shield_active:
+                self.health -= 1
              self.enemy_bullets.remove(bullet)
              self.create_explosion(self.player_x, self.player_y, 4)
 
@@ -847,6 +913,7 @@ class MyGame(arcade.Window):
           if p.life <= 0:
            self.particals.remove(p)
 
+
         for bullet in self.bullets[:]:
             
            for enemy in self.enemies[:]:
@@ -860,9 +927,13 @@ class MyGame(arcade.Window):
                    self.bullets.remove(bullet)
                    
                    if enemy.health<=0:
-                      self.create_explosion(enemy.x,enemy.y,12)
+                      self.create_explosion(enemy.x,enemy.y,8)
                       self.enemies.remove(enemy)
                       self.score +=10
+
+                      if random.random() < 0.8:
+                        p_type = random.choice(["rapid_fire", "shield","Health"])
+                        self.powerups.append(PowerUp(enemy.x, enemy.y, p_type))
                    break
             
            if self.boss:    
@@ -877,9 +948,12 @@ class MyGame(arcade.Window):
                 self.bullets.remove(bullet)
 
                 if dead:
-                 self.create_explosion(self.boss.x, self.boss.y,120)
+                 self.create_explosion(self.boss.x, self.boss.y,50)
                  self.score += 500
                  self.boss = None
+                 if random.random() < 0.8:
+                        p_type = random.choice(["rapid_fire", "shield","Health"])
+                        self.powerups.append(PowerUp(enemy.x, enemy.y, p_type))
 
     def shoot(self):
         # if self.shoot_cooldown <=0:

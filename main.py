@@ -22,9 +22,9 @@ PLAYER_SHOOT_COOLDOWN = 0.2
 BULLET_SPEED = 10
 BULLET_SCALE = 0.6
 ENEMY_SPAWN_RATE=1
-ENEMY_SPEED_MIN=1
-ENEMY_SPEED_MAX=3
-ENEMY_SCALE=0.18
+ENEMY_SPEED_MIN=0.5
+ENEMY_SPEED_MAX=4
+ENEMY_SCALE=0.14
 
 ENEMY_TYPES=["normal","shooter"]
 ENEMY_SHOOT_COOLDOWN = 2.0
@@ -34,7 +34,7 @@ PARTICLE_COUNT = 40
 PARTICAL_FADE_RATE=8
 CELL_SIZE = 120
 MAX_ATTACKERS = 4
-MAX_ENEMIES = 8
+MAX_ENEMIES = 6
 SEPARATION_FORCE = 0.05
 PLAYER_FRICTION = 0.90
 MAX_PLAYER_SPEED = 15
@@ -106,8 +106,20 @@ class EnemyBullet:
         self.x += math.cos(math.radians(self.angle)) *self.speed
         self.y += math.sin(math.radians(self.angle)) *self.speed
         
-    def draw(self):
-        arcade.draw_circle_filled(self.x,self.y,self.radius,self.color)
+    def draw(self,game):
+        if game.enemy_bullet_texture:
+            arcade.draw_texture_rect(
+            game.enemy_bullet_texture,
+            arcade.rect.XYWH(
+                self.x,
+                self.y,
+                10,
+                20
+            ),
+            angle=-self.angle + 90
+        )
+        else:
+         arcade.draw_circle_filled(self.x,self.y,self.radius,self.color)
 
     def is_off_screen(self):
         return (self.x <0 or self.x >SCREEN_WIDTH or
@@ -132,10 +144,22 @@ class Bullet:
         self.x += math.cos(math.radians(self.angle))*self.speed
         self.y += math.sin(math.radians(self.angle))*self.speed
 
-    def draw(self):
+    def draw(self,game):
         if not self.active:
            return
-        arcade.draw_circle_filled(self.x,self.y,self.radius,arcade.color.YELLOW)
+        if game.player_bullet_texture:
+          arcade.draw_texture_rect(
+            game.player_bullet_texture,
+            arcade.rect.XYWH(
+                self.x,
+                self.y,
+                10,   # width
+                20    # height
+            ),
+            angle=-self.angle + 90
+        )
+        else:
+         arcade.draw_circle_filled(self.x,self.y,self.radius,arcade.color.YELLOW)
     
     def deactive(self):
        self.active=False
@@ -175,7 +199,7 @@ class Enemy:
         self.health = 5
         self.display_health = 5
         self.shoot_cooldown=0  
-        self.turn_speed=3
+        self.turn_speed=2
     
     def take_damage(self):
         self.health -=1
@@ -220,10 +244,12 @@ class Enemy:
 
         if self.enemy_type == "shooter":
           texture = game.Shooter_Enemy_texture
-          final_angle = -self.angle+FIRING_ENEMY_SPRITE_ANGLE  # for firing enemy
+          final_angle = -self.angle+FIRING_ENEMY_SPRITE_ANGLE
+          scale=1.4*ENEMY_SCALE  # for firing enemy
         else:
           texture = game.Normal_Enemy_texture
-          final_angle = -self.angle+NORMAL_ENEMY_SPRITE_ANGLE   # you can tweak later
+          final_angle = -self.angle+NORMAL_ENEMY_SPRITE_ANGLE  
+          scale=ENEMY_SCALE # you can tweak later
 
     # ✅ Draw sprite if available
         if texture:
@@ -232,7 +258,7 @@ class Enemy:
             texture,
             self.x,
             self.y,
-            ENEMY_SCALE,
+            scale,
             final_angle
           )
 
@@ -319,7 +345,7 @@ class Boss:
         self.x = SCREEN_WIDTH // 2 + random.uniform(-200,200)
         self.y = SCREEN_HEIGHT +100
         
-        self.speed =2
+        self.speed =3
         self.angle=0
         self.radius=150*ENEMY_SCALE*2
         self.health =100
@@ -332,7 +358,7 @@ class Boss:
         self.color=arcade.color.ORANGE
 
     def take_damage(self):
-        self.health -=1
+        self.health -=50
         self.damage_flash_timer=0.3
         self.flashing=True
         return self.health <= 0
@@ -387,7 +413,7 @@ class Boss:
             texture,
             self.x,
             self.y,
-            ENEMY_SCALE,
+            1.5*ENEMY_SCALE,
             final_angle
           )
 
@@ -418,8 +444,8 @@ class Boss:
         health_ratio = self.health / self.max_health
         health_width = bar_width * health_ratio
 
-        bar_x = SCREEN_WIDTH/2 - bar_width/2
-        bar_y = SCREEN_HEIGHT - 40
+        bar_x = self.x- bar_width/2
+        bar_y = self.y +60
 
         arcade.draw_lbwh_rectangle_filled(
         bar_x, bar_y, bar_width, bar_height, arcade.color.DARK_RED
@@ -474,6 +500,12 @@ class MyGame(arcade.Window):
 
         Boss_enemy_path = os.path.join(BASE_DIR, "assets", "images", "Boss.png")
         self.Boss_texture = load_texture_safe(Boss_enemy_path)
+
+        player_bullet_path = os.path.join(BASE_DIR, "assets", "images", "Player_bullet.png")
+        self.player_bullet_texture = load_texture_safe(player_bullet_path)
+
+        enemy_bullet_path = os.path.join(BASE_DIR, "assets", "images", "Enemy_bullet.png")
+        self.enemy_bullet_texture = load_texture_safe(enemy_bullet_path)
         
         
         self.bullet_pool=[Bullet() for _ in range (100)]
@@ -632,10 +664,10 @@ class MyGame(arcade.Window):
 
           for bullet in self.bullet_pool:
             if bullet.active:
-              bullet.draw()
+              bullet.draw(self)
         
           for bullet in self.enemy_bullets:
-             bullet.draw()
+             bullet.draw(self)
 
           for enemy in self.enemies:
             enemy.draw(self)
@@ -833,7 +865,7 @@ class MyGame(arcade.Window):
         
         for i, enemy in enumerate(sorted_enemies):
 
-          if i < MAX_ATTACKERS:
+          if self.boss or  i < MAX_ATTACKERS:
                enemy.update(self.player_x, self.player_y, delta_time)
           else:
             # orbit player
@@ -892,10 +924,15 @@ class MyGame(arcade.Window):
 
                   dist_sq = dx_*dx_ + dy_*dy_
 
-                  if dist_sq == 0:
-                    continue
-
-                  dist = math.sqrt(dist_sq)
+                  # safe normalization (fix sticking)
+                  if dist_sq < 0.01:
+                     nx = random.uniform(-1, 1)
+                     ny = random.uniform(-1, 1)
+                     dist = 0.01
+                  else:
+                    dist = math.sqrt(dist_sq)
+                    nx = dx_ / dist
+                    ny = dy_ / dist
 
                   min_dist = enemy.radius + getattr(other, "radius", 30)
 
@@ -904,10 +941,31 @@ class MyGame(arcade.Window):
                     nx = dx_ / dist
                     ny = dy_ / dist
 
-                    push = (min_dist - dist) * 0.5
+                    push = max((min_dist - dist) * 0.1,1.2)
 
                     enemy.x += nx * push
                     enemy.y += ny * push
+                    # push boss slightly (prevents sticking)
+                    if isinstance(other, Boss):
+                       other.x -= nx * push * 0.3
+                       other.y -= ny * push * 0.3
+
+
+        if self.boss:
+         for enemy in self.enemies:
+           dx = enemy.x - self.boss.x
+           dy = enemy.y - self.boss.y
+
+           dist_sq = dx*dx + dy*dy
+           safe_dist = (self.boss.radius * 1.5) ** 2
+
+           if dist_sq < safe_dist:
+              dist = math.sqrt(dist_sq) + 0.001
+              nx = dx / dist
+              ny = dy / dist
+
+              enemy.x += nx * 2
+              enemy.y += ny * 2
         
 
         for p in self.powerups[:]:
@@ -1078,7 +1136,6 @@ class MyGame(arcade.Window):
 
                if dx*dx+dy*dy< (bullet.radius + self.boss.radius)**2:
                 dead = self.boss.take_damage()
-                print("Boss health:", self.boss.health)
                 bullet.deactive()
                 hit=True
 
@@ -1098,6 +1155,8 @@ class MyGame(arcade.Window):
 
       
     def shoot(self):
+        while self.bullet_pool[self.bullet_index].active:
+            self.bullet_index = (self.bullet_index + 1) % self.max_bullets
         bullet = self.bullet_pool[self.bullet_index]
 
         if bullet.active:

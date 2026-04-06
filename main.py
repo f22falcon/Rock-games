@@ -40,25 +40,45 @@ PLAYER_FRICTION = 0.90
 MAX_PLAYER_SPEED = 15
 
 class PowerUp:
-   def __init__(self,x,y,power_type):
+   def __init__(self,x,y,type):
         self.x=x
         self.y=y
-        self.type=power_type
+        self.type=type
         self.radius =10
         self.speed_y =-1
-        
-        if power_type =="rapid_fire":
-           self.color=arcade.color.BLUE
-        elif power_type =="shield":
-           self.color=arcade.color.CYAN
-        else:
-           self.color=arcade.color.GREEN
+           
 
    def update(self):
       self.y +=self.speed_y
 
-   def draw(self):
-      arcade.draw_circle_filled(self.x,self.y,self.radius,self.color)
+   def draw(self,game):
+      if self.type =="rapid_fire":
+         texture=game.Rapid_fire_texture
+
+      elif self.type =="shield":
+           texture=game.shield_texture
+      else:
+          texture=game.Life_texture
+
+      if texture:
+            arcade.draw_texture_rect(
+            texture,
+            arcade.rect.XYWH(
+                self.x,
+                self.y,
+                25,
+                25
+            ),    
+        )
+      else:   
+        if self.type =="rapid_fire":
+           self.color=arcade.color.BLUE
+        elif self.type =="shield":
+           self.color=arcade.color.CYAN
+        else:
+           self.color=arcade.color.GREEN
+       
+        arcade.draw_circle_filled(self.x,self.y,self.radius,self.color)
    
 class Particle:
 
@@ -251,9 +271,9 @@ class Enemy:
           final_angle = -self.angle+NORMAL_ENEMY_SPRITE_ANGLE  
           scale=ENEMY_SCALE # you can tweak later
 
-    # ✅ Draw sprite if available
+    # Draw sprite if available
         if texture:
-        #   final_angle = -self.angle + angle_offset
+        
           game.draw_texture_safe(
             texture,
             self.x,
@@ -261,8 +281,6 @@ class Enemy:
             scale,
             final_angle
           )
-
-        
 
         else:
           if self.enemy_type =="shooter":
@@ -319,21 +337,48 @@ class BossBullet:
         self.angle= angle 
         self.is_big=is_big
         self.speed=7
-        self.damage=999 if is_big else 30
+        self.radius=12 if is_big else 6
+        self.damage=999 if is_big else 5
 
-        if is_big:
-            self.radius=12
-            self.color=arcade.color.YELLOW
-        else:
-            self.radius =6
-            self.color = arcade.color.ORANGE_RED
+        
 
     def update (self):
         self.x += math.cos(math.radians(self.angle)) *self.speed
         self.y += math.sin(math.radians(self.angle)) *self.speed
 
-    def draw(self):
-         arcade.draw_circle_filled(self.x,self.y,self.radius,self.color)
+    def draw(self,game):
+         if self.is_big:
+            texture=game.Boss_Missile_texture 
+            width=40
+            height=80
+            angle=-self.angle+90
+            
+         else:
+            texture=game.Boss_bullet_texture
+            width=20
+            height=25
+            angle=-self.angle+180
+           
+
+         if texture:
+            arcade.draw_texture_rect(
+            texture,
+            arcade.rect.XYWH(
+                self.x,
+                self.y,
+                width,
+                height
+              ),
+            angle=angle
+            )
+        
+         else:
+           if self.is_big:
+              self.color=arcade.color.YELLOW
+
+           else:
+              self.color = arcade.color.ORANGE_RED
+           arcade.draw_circle_filled(self.x,self.y,self.radius,self.color)
         
     def is_off_screen(self):
         return (self.x <0 or self.x >SCREEN_WIDTH or
@@ -358,7 +403,7 @@ class Boss:
         self.color=arcade.color.ORANGE
 
     def take_damage(self):
-        self.health -=50
+        self.health -=10
         self.damage_flash_timer=0.3
         self.flashing=True
         return self.health <= 0
@@ -506,6 +551,21 @@ class MyGame(arcade.Window):
 
         enemy_bullet_path = os.path.join(BASE_DIR, "assets", "images", "Enemy_bullet.png")
         self.enemy_bullet_texture = load_texture_safe(enemy_bullet_path)
+        
+        Boss_bullet_path = os.path.join(BASE_DIR, "assets", "images", "Boss_bullet.png")
+        self.Boss_bullet_texture = load_texture_safe(Boss_bullet_path)
+        
+        Boss_Missile_path = os.path.join(BASE_DIR, "assets", "images", "Boss_missile.png")
+        self.Boss_Missile_texture = load_texture_safe(Boss_Missile_path)
+
+        shield_path = os.path.join(BASE_DIR, "assets", "images", "Shield.png")
+        self.shield_texture = load_texture_safe(shield_path)
+
+        Life_path = os.path.join(BASE_DIR, "assets", "images", "Life.png")
+        self.Life_texture = load_texture_safe(Life_path)
+
+        Rapid_Fire_path = os.path.join(BASE_DIR, "assets", "images", "Rapid_Fire.png")
+        self.Rapid_fire_texture = load_texture_safe(Rapid_Fire_path)
         
         
         self.bullet_pool=[Bullet() for _ in range (100)]
@@ -697,13 +757,13 @@ class MyGame(arcade.Window):
     
 
           for bullet in self.boss_bullets:
-            bullet.draw()
+            bullet.draw(self)
 
           for p in self.particals:
             p.draw()
 
           for p in self.powerups:
-               p.draw()
+               p.draw(self)
 
        else:
         # -------- GAME OVER SCREEN ONLY --------

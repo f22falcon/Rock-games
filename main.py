@@ -14,7 +14,7 @@ SPRITE_ANGLE_OFFSET = 90
 NORMAL_ENEMY_SPRITE_ANGLE =-90
 FIRING_ENEMY_SPRITE_ANGLE =-90
 
-PLAYER_SCALE = 0.14
+PLAYER_SCALE = 0.11
 PLAYER_SPEED = 6
 PLAYER_ROTATION_SPEED = 6
 PLAYER_SHOOT_COOLDOWN = 0.2
@@ -22,7 +22,7 @@ PLAYER_SHOOT_COOLDOWN = 0.2
 BULLET_SPEED = 10
 BULLET_SCALE = 0.6
 ENEMY_SPAWN_RATE=1
-ENEMY_SPEED_MIN=0.5
+ENEMY_SPEED_MIN=2
 ENEMY_SPEED_MAX=4
 ENEMY_SCALE=0.14
 
@@ -32,7 +32,7 @@ ENEMY_BULLET_SPEED = 5
 ENEMY_BULLET_COLOR= arcade.color.RED
 PARTICLE_COUNT = 40
 PARTICAL_FADE_RATE=8
-CELL_SIZE = 120
+CELL_SIZE = 80
 MAX_ATTACKERS = 4
 MAX_ENEMIES = 6
 SEPARATION_FORCE = 0.05
@@ -566,6 +566,23 @@ class MyGame(arcade.Window):
 
         Rapid_Fire_path = os.path.join(BASE_DIR, "assets", "images", "Rapid_Fire.png")
         self.Rapid_fire_texture = load_texture_safe(Rapid_Fire_path)
+
+        # -------- LOAD SOUNDS --------
+        gun_sound_path = os.path.join(BASE_DIR,"assets","sounds", "Gun_shot.wav")
+        boom_sound_path = os.path.join(BASE_DIR, "assets","sounds", "Blust_Boom.wav")
+
+        self.gun_sound = arcade.load_sound(gun_sound_path)
+        self.boom_sound = arcade.load_sound(boom_sound_path)
+
+        # -------- LOAD BACKGROUND SAFELY --------
+        bg_path = os.path.join(BASE_DIR, "assets", "images", "background.jpg")
+
+        try:
+          self.background_texture = arcade.load_texture(bg_path)
+          print("[OK] Background loaded")
+        except Exception as e:
+          print("[ERROR] Background failed:", e)
+          self.background_texture = None
         
         
         self.bullet_pool=[Bullet() for _ in range (100)]
@@ -584,7 +601,7 @@ class MyGame(arcade.Window):
         self.auto_fire = False
         self.shoot_timer = 0.0
         self.enemy_spawn_timer=0 
-        self.boss_spawn_timer=1#random.uniform(20,60)
+        self.boss_spawn_timer=random.uniform(20,60)
         self.health=100
         self.score=0   
         self.game_over=False
@@ -700,6 +717,25 @@ class MyGame(arcade.Window):
        self.clear()
 
        if not self.game_over:
+          if self.background_texture:
+           tex = self.background_texture
+
+           scale_x = SCREEN_WIDTH / tex.width
+           scale_y = SCREEN_HEIGHT / tex.height
+           scale = max(scale_x, scale_y)
+
+           arcade.draw_texture_rect(
+                tex,
+                arcade.rect.XYWH(
+                SCREEN_WIDTH // 2,
+                SCREEN_HEIGHT // 2,
+                tex.width * scale,
+                tex.height * scale
+             )
+          )
+          else:
+           # fallback (black background already set)
+            pass
           
           if self.player_texture:
             final_angle=-self.player_angle +SPRITE_ANGLE_OFFSET
@@ -896,6 +932,7 @@ class MyGame(arcade.Window):
 
         if arcade.key.D in self.keys_pressed:
             self.player_x += PLAYER_SPEED
+
 
         if self.rapid_fire_timer > 0:
           self.rapid_fire_timer -= delta_time   
@@ -1170,6 +1207,7 @@ class MyGame(arcade.Window):
                        hit=True
 
                        if enemy.health <= 0:
+                          arcade.play_sound(self.boom_sound,volume=0.8)
                           self.create_explosion(enemy.x, enemy.y, 8)
                           if enemy in self.enemies:
                             self.enemies.remove(enemy)
@@ -1201,6 +1239,7 @@ class MyGame(arcade.Window):
 
 
                 if dead:
+                 arcade.play_sound(self.boom_sound,volume=0.9)
                  self.create_explosion(self.boss.x, self.boss.y,50)
                  self.score += 500
                  if random.random() < 0.8:
@@ -1227,6 +1266,7 @@ class MyGame(arcade.Window):
         self.player_y + math.sin(math.radians(self.player_angle)) * self.player_radius,
         self.player_angle
         )
+        arcade.play_sound(self.gun_sound,volume=0.1)
 
         # move pointer forward (circular)
         self.bullet_index = (self.bullet_index + 1) % self.max_bullets
